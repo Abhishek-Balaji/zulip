@@ -670,13 +670,16 @@ class RealmFilter(models.Model):
     realm = models.ForeignKey(Realm, on_delete=CASCADE)  # type: Realm
     pattern = models.TextField(validators=[filter_pattern_validator])  # type: str
     url_format_string = models.TextField(validators=[URLValidator(), filter_format_validator])  # type: str
-
+    stream_ids = models.TextField(default = None)  # type: Optional[str]
     class Meta:
         unique_together = ("realm", "pattern")
 
     def __str__(self) -> str:
-        return "<RealmFilter(%s): %s %s>" % (self.realm.string_id, self.pattern, self.url_format_string)
-
+       return "<RealmFilter(%s): %s %s %s %s>" % (self.realm.string_id,
+                                                   self.pattern,
+                                                   self.url_format_string,
+                                                   self.is_stream_filter,
+                                                   self.stream_ids)
 def get_realm_filters_cache_key(realm_id: int) -> str:
     return u'%s:all_realm_filters:%s' % (cache.KEY_PREFIX, realm_id,)
 
@@ -686,25 +689,28 @@ per_request_realm_filters_cache = {}  # type: Dict[int, List[Tuple[str, str, int
 def realm_in_local_realm_filters_cache(realm_id: int) -> bool:
     return realm_id in per_request_realm_filters_cache
 
-def realm_filters_for_realm(realm_id: int) -> List[Tuple[str, str, int]]:
+def realm_filters_for_realm(realm_id: int) -> List[Tuple[str, str, int, str]]:
     if not realm_in_local_realm_filters_cache(realm_id):
         per_request_realm_filters_cache[realm_id] = realm_filters_for_realm_remote_cache(realm_id)
     return per_request_realm_filters_cache[realm_id]
 
 @cache_with_key(get_realm_filters_cache_key, timeout=3600*24*7)
-def realm_filters_for_realm_remote_cache(realm_id: int) -> List[Tuple[str, str, int]]:
+def realm_filters_for_realm_remote_cache(realm_id: int) -> List[Tuple[str, str, int, str]]:
     filters = []
     for realm_filter in RealmFilter.objects.filter(realm_id=realm_id):
-        filters.append((realm_filter.pattern, realm_filter.url_format_string, realm_filter.id))
-
+        filters.append((realm_filter.pattern,
+                        realm_filter.url_format_string,
+                        realm_filter.id,
+                        realm_filter.stream_ids))
     return filters
 
-def all_realm_filters() -> Dict[int, List[Tuple[str, str, int]]]:
+def all_realm_filters() -> Dict[int, List[Tuple[str, str, int, str]]]:
     filters = defaultdict(list)  # type: DefaultDict[int, List[Tuple[str, str, int]]]
     for realm_filter in RealmFilter.objects.all():
         filters[realm_filter.realm_id].append((realm_filter.pattern,
                                                realm_filter.url_format_string,
-                                               realm_filter.id))
+                                               realm_filter.id,
+                                             realm_filter.stream_ids))
 
     return filters
 

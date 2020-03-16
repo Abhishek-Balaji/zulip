@@ -1586,13 +1586,31 @@ class RealmFilterPattern(markdown.inlinepatterns.Pattern):
 
     def __init__(self, source_pattern: str,
                  format_string: str,
+                 stream_ids: str,
                  markdown_instance: Optional[markdown.Markdown]=None) -> None:
         self.pattern = prepare_realm_pattern(source_pattern)
         self.format_string = format_string
+        self.stream_ids = stream_ids
         markdown.inlinepatterns.Pattern.__init__(self, self.pattern, markdown_instance)
+
+    def should_apply_filter(self) -> bool:
+        if not self.stream_ids:
+            return True
+
+        msg = self.markdown.zulip_message
+
+        stream_id = msg.recipient.type_id
+        stream_id_set = set(int(i) for i in self.stream_ids.split(','))
+        if stream_id in stream_id_set:
+            return True
+
+        return False
+
 
     def handleMatch(self, m: Match[str]) -> Union[Element, str]:
         db_data = self.markdown.zulip_db_data
+        if not self.should_apply_filter():
+            return None
         return url_to_a(db_data,
                         self.format_string % m.groupdict(),
                         m.group(OUTER_CAPTURE_GROUP))
@@ -1943,9 +1961,13 @@ class Bugdown(markdown.Markdown):
         return reg
 
     def register_realm_filters(self, inlinePatterns: markdown.util.Registry) -> markdown.util.Registry:
-        for (pattern, format_string, id) in self.getConfig("realm_filters"):
-            inlinePatterns.register(RealmFilterPattern(pattern, format_string, self),
-                                    'realm_filters/%s' % (pattern,), 45)
+        for (pattern, format_string, id, stream_ids) in self.getConfig("realm_filters"):
+            priority = 45
+            if not stream_ids==None:
+                # stream filters are at a higher priority
+                priority = 50
+            inlinePatterns.register(RealmFilterPattern(pattern, format_string, stream_ids, self),
+                                    'realm_filters/%s' % (pattern,), priority)
         return inlinePatterns
 
     def build_treeprocessors(self) -> markdown.util.Registry:
@@ -2004,7 +2026,7 @@ def make_md_engine(realm_filters_key: int, email_gateway: bool) -> None:
         email_gateway=email_gateway,
     )
 
-def build_engine(realm_filters: List[Tuple[str, str, int]],
+def build_engine(realm_filters: List[Tuple[str, str, int, str]],
                  realm_filters_key: int,
                  email_gateway: bool) -> markdown.Markdown:
     engine = Bugdown(

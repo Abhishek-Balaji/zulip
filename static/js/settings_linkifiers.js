@@ -31,6 +31,7 @@ exports.populate_filters = function (filters_data) {
                     pattern: filter[0],
                     url_format_string: filter[1],
                     id: filter[2],
+                    stream_ids: filter[3],
                 },
                 can_modify: page_params.is_admin,
             });
@@ -119,7 +120,7 @@ exports.build_page = function () {
         pattern_status.hide();
         format_status.hide();
         const filter = {};
-
+        console.log($(this).serialize());
         for (const obj of $(this).serializeArray()) {
             filter[obj.name] = obj.value;
         }
@@ -130,6 +131,7 @@ exports.build_page = function () {
             success: function (data) {
                 $('#filter_pattern').val('');
                 $('#filter_format_string').val('');
+                $('#filter_stream_ids').val('');
                 add_filter_button.removeAttr("disabled");
                 filter.id = data.id;
                 ui_report.success(i18n.t("Custom filter added!"), filter_status);
